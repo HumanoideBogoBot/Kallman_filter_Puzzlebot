@@ -1,0 +1,14 @@
+material ajedrez_material
+{
+    recieve_shadows off
+    technique
+    {
+        pass
+        {
+            texture_unit
+            {
+                pattern.png
+            }
+        }
+    }
+}

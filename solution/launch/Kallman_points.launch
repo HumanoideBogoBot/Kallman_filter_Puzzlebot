@@ -1,0 +1,7 @@
+<launch>
+    <node name="detector_arucos" type="detect_aruco.py" pkg="solution" />
+    <node name="Kallman" type="Kallman.py" pkg="solution" />
+    <node name="bug" type="bug2.py" pkg="solution"/>
+    <arg name="rvizconfig" default="$(find solution)/rviz/config.rviz" />
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(arg rvizconfig)" required="true" />
+</launch>

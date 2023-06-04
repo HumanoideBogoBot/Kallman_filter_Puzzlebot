@@ -1,0 +1,14 @@
+material aruco_tag_13
+{
+    recieve_shadows off
+    technique
+    {
+        pass
+        {
+            texture_unit
+            {
+                texture aruco_113.png
+            }
+        }
+    }
+}

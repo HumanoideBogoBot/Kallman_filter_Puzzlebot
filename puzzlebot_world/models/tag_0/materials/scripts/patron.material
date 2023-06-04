@@ -1,0 +1,14 @@
+material patron_aje
+{
+    recieve_shadows off
+    technique
+    {
+        pass
+        {
+            texture_unit
+            {
+                texture pattern.png
+            }
+        }
+    }
+}
