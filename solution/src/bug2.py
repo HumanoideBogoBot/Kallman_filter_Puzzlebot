@@ -12,6 +12,7 @@ from sensor_msgs.msg import LaserScan
 
 class RightHandRuleController:
     def __init__(self, wall_dist=0.5, w_max = 0.15, v_max=0.1,puntos=[(0,0)]):
+        #Declaramos los publishers y suscribers necesarios
         self.scan_listener = rospy.Subscriber('/scan', LaserScan,self.scan_callback)
         self.wr_listener = rospy.Subscriber('/wr', Float32,self.wr_callback)
         self.wl_listener = rospy.Subscriber('/wl', Float32,self.wl_callback)
@@ -62,19 +63,23 @@ class RightHandRuleController:
             self.puntos_marker.append(Point(i[0],i[1],0.0))
         self.marker.points = [Point(0.0,0.0,0.0)] + self.puntos_marker
         
-
+    #Callback de lo medido con el LIDAR
     def scan_callback(self, msg):
         self.scan = msg
+    
+    #Posicion del robot calculado por Kalman
     def point_callback(self,msg):
         self.x = msg.point.x
         self.y = msg.point.y
         self.q = msg.point.z
     
+    #Velocidades de los encoders del robot
     def wr_callback(self, msg):
         self.wr = msg.data
     def wl_callback(self, msg):
         self.wl = msg.data
-        
+    
+    #Funcion seguidor de linea
     def follow_left_hand_wall(self):
         #print(len(self.scan.ranges))
         if self.scan is not None:
@@ -94,8 +99,6 @@ class RightHandRuleController:
             kp_perpendicular_wall_dis = 1
             #Sumamos lo de los dos controladores proporcionales para obtener la velocidad angular
             w = (kp_alpha * error_alpha) + (kp_perpendicular_wall_dis * error_perpendicular_wall_dis)
-            #--------------------------------------------------------------
-            #--------------------------------------------------------------
             #Definimos el limte del filtro de saturacion
             limite = 1.5
             #Defimimos la distancia maxim que nos podemos hacercar de frente con el robot
@@ -115,22 +118,15 @@ class RightHandRuleController:
             return (0.0,0.0)
             
     
-    def cal_odometry(self,x,y,th,dt):
-        #Funcion que hace los calculos de odometria de la nueva posicion
-        x = x + self.r*((self.wr+self.wl)/(2))*dt*np.cos(th)
-        y = y + self.r*((self.wr+self.wl)/(2))*dt*np.sin(th)
+    def cal_odometry(self,th,dt):
         th = th + self.r*((self.wr-self.wl)/(self.l))*dt
-        return (x,y,th)
+        return (th)
 
     def odometry(self,dt,xin,yin):
         #Hacemos los nuevos calculos de la odometria
-        x,y,th = self.cal_odometry(self.x,self.y,self.th,dt)
-        #x = self.x
-        #y = self.y
-        #th = self.q
-        #Hacemos que el calculo de inclinacion siempre vaya de 0 a -pi o de 0 a pi
-        self.x = x
-        self.y = y
+        """Aqui hacemos un angulo de inclinacion local para poder hacer un giro contratrio a las
+        cajas para evitar que el robot la siga"""
+        th = self.cal_odometry(self.th,dt)
         self.th = th
         print(self.xt,self.yt,xin,yin)
         #Obtenemos el giro deseado para alinearnos
@@ -142,7 +138,7 @@ class RightHandRuleController:
         edis = np.sqrt((self.xt - self.x)**2 + (self.yt - self.y)**2)
         #Constantes de control para el giro y avanzar hacia el punto
         kd,kth = 1,1
-        #dist = ((self.a*self.x + self.b*self.y + self.c))/(np.sqrt(self.a**2 + self.b**2))
+        #Distancia hacia la linea central
         dist_lin = -((self.a*self.x + self.b*self.y + self.c))/(np.sqrt(self.a**2 + self.b**2))
         w = ther*kth + dist_lin * 8
         print("Error q:",ther)
@@ -160,10 +156,12 @@ class RightHandRuleController:
         if (np.abs(w) > 0.05) and (dist_lin < 0.05):
             v = 0
         print(edis)
+        #Si estamos en el ultimo punto cerca paramos
         if (edis < 0.09) and ((self.lugar+1) == len(self.puntos)):
             v = 0
             w = 0
             self.final = True
+        #Si estamos cerca el punto cambiamos de punto
         elif (edis < 0.09):
             self.lugar += 1
             self.xt = self.puntos[self.lugar][0]
@@ -196,7 +194,7 @@ class RightHandRuleController:
         #Estados que controlan si seguimos pared o seguimos odometria
         estado_odom = True
         estado_esquina = False
-        #Obtenemos las constantes del la linea recta desead
+        #Obtenemos las constantes del la linea recta deseada
         self.xt = self.puntos[self.lugar][0]
         self.yt = self.puntos[self.lugar][1]
         self.cal_linea(self.x,self.y,self.xt,self.yt)
@@ -206,7 +204,6 @@ class RightHandRuleController:
         estado_lin_reset = False
         while not rospy.is_shutdown():
             self.marker_pub.publish(self.marker)
-            #print(self.puntos_marker)
             #Si el scan no esta vacio
             if self.scan is None:
                 continue
@@ -233,11 +230,10 @@ class RightHandRuleController:
             #Hacmos la odometria todo el tiempo para saber donde estamos
             print("iniciales:",self.xin,self.yin)
             v,w = self.odometry(dt,self.xin,self.yin)
-            #w = np.arctan2(np.sin(w),np.cos(w))
-            #Obtenemos la distancia con la liea original
+            #Obtenemos la distancia con la linea original
             dist = (np.abs(self.a*self.x + self.b*self.y + self.c))/(np.sqrt(self.a**2 + self.b**2))
             dis_lin = np.sqrt((self.x - x_antes_linea_ini)**2 + (self.y - y_antes_linea_ini)**2)
-            #Si detecatmos alfrente o a los damos mas cerca que un umbral pasamos a modo wall follower
+            #Si detectamos alfrente o a los lamos mas cerca que un umbral pasamos a modo wall follower
             if (self.distance_ahead < 1):
                 self.thin = self.th
                 estado_odom = False
@@ -262,7 +258,6 @@ class RightHandRuleController:
                 v,w = self.follow_left_hand_wall()
             #Publicamos la velocidad
             msg = Twist()
-            #w = np.arctan2(np.sin(w),np.cos(w))
             w = np.clip(w, -self.w_max, self.w_max)
             v = np.clip(v, -self.v_max, self.v_max)
             msg.angular.z = w
